@@ -19,7 +19,9 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const apiKey = ""; // Injected by environment
+        // Saved locally, bypassing need to re-enter!
+        const getLocalKey = () => localStorage.getItem('rq_api_key') || '';
+        const getLocalModel = () => localStorage.getItem('rq_model') || 'gemini-1.5-flash';
 
         const TEAMS = [
             { id: 'flutes', name: 'Flutes', color: 'bg-blue-400', border: 'border-blue-600', icon: 'fa-wind', count: 4 },
@@ -87,6 +89,17 @@
                 </svg>
             );
 
+            // 8th Note Triplets
+            if (fuzzyMatch([1/3, 1/3, 1/3])) return (
+                <svg key={key} viewBox="0 0 75 80" className="w-20 h-20 inline-block mx-1 fill-current stroke-current">
+                    <text x="32" y="15" fontSize="14" fontWeight="bold">3</text>
+                    {[12, 37, 62].map((cx, i) => <ellipse key={'h'+i} cx={cx} cy="65" rx="7" ry="5" transform={`rotate(-20 ${cx} 65)`} />)}
+                    {[17, 42, 67].map((x, i) => <line key={'s'+i} x1={x} y1="65" x2={x} y2="25" strokeWidth="2" />)}
+                    <rect x="16" y="25" width="52" height="6" />
+                </svg>
+            );
+
+            // 16th Note Triplets
             if (fuzzyMatch([1/6, 1/6, 1/6, 0.5])) return (
                 <svg key={key} viewBox="0 0 100 80" className="w-24 h-20 inline-block mx-1 fill-current stroke-current">
                     <text x="37" y="15" fontSize="14" fontWeight="bold">3</text>
@@ -112,104 +125,87 @@
 
         const generateMeasure = (difficultyLevel = 0) => {
             const groups = [];
-            let remaining = 4.0;
+            // Level 9+ gets a grueling 2 measures (8 beats)!
+            const totalBeats = difficultyLevel >= 8 ? 8.0 : 4.0; 
+            let remaining = totalBeats;
             
             while(remaining > 0) {
-                // Occasional whole or half notes if there is room
-                if (remaining === 4.0 && Math.random() < 0.1) { groups.push([4.0]); remaining -= 4.0; continue; }
-                if (remaining >= 2.0 && Math.random() < 0.15) { groups.push([2.0]); remaining -= 2.0; continue; }
+                let availablePatterns = [];
 
-                const patterns = [
-                    [1.0] // Always available: Quarter notes
-                ];
-                
-                if (difficultyLevel >= 2) {
-                    patterns.push([0.5, 0.5]); // Introduce 8th notes at step 2
-                }
-                
-                if (difficultyLevel >= 5) {
-                    // Introduce 16th notes at step 5
-                    patterns.push([0.25, 0.25, 0.25, 0.25]);
-                    patterns.push([0.5, 0.25, 0.25]);
-                    patterns.push([0.25, 0.25, 0.5]);
+                if (difficultyLevel <= 2) {
+                    // Levels 1-3 (Positions 0-2): Whole, Half, Quarter ONLY
+                    if (remaining >= 4.0) availablePatterns.push([4.0]);
+                    if (remaining >= 2.0) availablePatterns.push([2.0]);
+                    if (remaining >= 1.0) availablePatterns.push([1.0]);
+                } else if (difficultyLevel <= 5) {
+                    // Levels 4-6 (Positions 3-5): 8ths, 16ths, combos
+                    if (remaining >= 1.0) {
+                        availablePatterns.push([1.0]); // Keep quarters to connect things
+                        availablePatterns.push([0.5, 0.5]);
+                        availablePatterns.push([0.25, 0.25, 0.25, 0.25]);
+                        availablePatterns.push([0.5, 0.25, 0.25]);
+                        availablePatterns.push([0.25, 0.25, 0.5]);
+                    }
+                } else {
+                    // Levels 7-9 (Positions 6+): Triplets and advanced syncopation
+                    if (remaining >= 1.0) {
+                        availablePatterns.push([1.0]);
+                        availablePatterns.push([0.5, 0.5]);
+                        availablePatterns.push([0.25, 0.25, 0.25, 0.25]);
+                        availablePatterns.push([1/3, 1/3, 1/3]); // 8th note triplets
+                        availablePatterns.push([1/6, 1/6, 1/6, 0.5]); // 16th note triplets
+                        availablePatterns.push([0.5, 1/6, 1/6, 1/6]);
+                    }
                 }
 
-                if (difficultyLevel >= 8) {
-                    // Introduce 16th-note triplets at step 8
-                    patterns.push([1/6, 1/6, 1/6, 0.5]);
-                    patterns.push([0.5, 1/6, 1/6, 1/6]);
+                // Fallback for safety
+                if (availablePatterns.length === 0) {
+                    groups.push([1.0]);
+                    remaining -= 1.0;
+                    continue;
                 }
-                
-                const p = patterns[Math.floor(Math.random() * patterns.length)];
+
+                const p = availablePatterns[Math.floor(Math.random() * availablePatterns.length)];
                 groups.push(p);
-                remaining -= 1.0;
+                
+                const sum = p.reduce((a, b) => a + b, 0);
+                remaining -= sum;
+                // Fix JS floating point drift
+                remaining = Math.round(remaining * 100) / 100;
             }
             return groups;
         };
 
         const App = () => {
-            const [appView, setAppView] = React.useState('title'); // 'title' or 'game'
-            const [userApiKey, setUserApiKey] = React.useState(apiKey);
-            const [selectedModel, setSelectedModel] = React.useState('gemini-1.5-flash');
-            const [keyStatus, setKeyStatus] = React.useState('idle'); // idle, testing, success, error
+            const [appView, setAppView] = React.useState('title');
+            const [userApiKey, setUserApiKey] = React.useState(getLocalKey());
+            const [selectedModel, setSelectedModel] = React.useState(getLocalModel());
+            const [keyStatus, setKeyStatus] = React.useState('idle');
             
             const [positions, setPositions] = React.useState({ flutes: 0, clarinets: 0, saxophones: 0, trumpets: 0, lowbrass: 0, percussion: 0 });
             const [fails, setFails] = React.useState({ flutes: 0, clarinets: 0, saxophones: 0, trumpets: 0, lowbrass: 0, percussion: 0 });
             const [currentTeamIndex, setCurrentTeamIndex] = React.useState(0);
+            const [stealingTeamIndex, setStealingTeamIndex] = React.useState(null);
             const [turnQueue, setTurnQueue] = React.useState([]);
-            const [story, setStory] = React.useState("Welcome to Rhythm Quest! The magical Melody Chest awaits the first section to cross the musical realm. Teacher, click Start to begin the adventure!");
-            const [loading, setLoading] = React.useState(false);
+            const [story, setStory] = React.useState("Welcome to Rhythm Quest! The magical Melody Chest awaits the first section to cross the musical realm.");
             const [currentRhythm, setCurrentRhythm] = React.useState([]);
             const [replaysLeft, setReplaysLeft] = React.useState(2);
-            const [gamePhase, setGamePhase] = React.useState('start'); // start, playing, judging, gameover
+            // gamePhases: start, playing, judging, steal_opportunity, judging_steal, gameover
+            const [gamePhase, setGamePhase] = React.useState('start'); 
             const [winner, setWinner] = React.useState(null);
             const [showRhythm, setShowRhythm] = React.useState(false);
             const [audioCtx, setAudioCtx] = React.useState(null);
 
-            // Fetch Story from Gemini
-            const fetchDMStory = async (prevResult, prevTeamIdx, nextTeamIdx, isWin = false, isTPK = false) => {
-                setLoading(true);
-                try {
-                    const prevTeam = TEAMS[prevTeamIdx];
-                    const nextTeam = nextTeamIdx !== null ? TEAMS[nextTeamIdx] : null;
-                    
-                    let prompt = "";
-                    if (isTPK) {
-                        prompt = `The final section, the ${prevTeam.name}, has failed their rhythm. Every single section has been eliminated from the quest! Write a dramatic, G-rated conclusion (2 sentences max) where the Melody Chest remains sealed and the heroes must retreat for now.`;
-                    } else if (isWin) {
-                        prompt = `The ${prevTeam.name} section just successfully counted their final rhythm and reached the Melody Chest! Write a 2-sentence celebratory, G-rated ending to their quest.`;
-                    } else if (prevResult === 'start') {
-                        prompt = `The game is just beginning. It is the ${nextTeam.name} section's turn. Write a short, exciting, school-appropriate (G-rated) scenario (2 sentences max) where they encounter an obstacle on their way to the Melody Chest. End by saying "Listen and count the rhythm to pass!"`;
-                    } else {
-                        const transition = prevResult === 'pass' 
-                            ? `The ${prevTeam.name} successfully overcame their obstacle and advanced!` 
-                            : `The ${prevTeam.name} failed their rhythmic challenge and took damage.`;
-                        
-                        prompt = `${transition} Now it is the ${nextTeam.name} section's turn. Write a short, exciting, school-appropriate (G-rated) scenario (2 sentences max) where they encounter a NEW obstacle on their way to the Melody Chest. End by saying "Listen and count the rhythm to pass!"`;
-                    }
-
-                    // Uses the user's selected model!
-                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:generateContent?key=${userApiKey}`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                            contents: [{ parts: [{ text: prompt }] }],
-                            systemInstruction: { parts: [{ text: "You are a friendly, enthusiastic, G-rated Dungeon Master for a middle/elementary school band class." }] }
-                        })
-                    });
-
-                    const data = await response.json();
-                    if (data.candidates && data.candidates[0]) {
-                        setStory(data.candidates[0].content.parts[0].text);
-                    } else {
-                        console.error("DM Story API Error Data:", data);
-                        setStory("The magical winds are howling too loudly to hear the DM! (Error loading story, but the quest continues!)");
-                    }
-                } catch (error) {
-                    console.error("AI Error:", error);
-                    setStory("The DM is temporarily lost in the enchanted woods. Please proceed with the rhythm challenge!");
-                }
-                setLoading(false);
+            const generateStoryText = (phase, team, targetTeam = null) => {
+                if (phase === 'start') return `The quest begins! It is the ${team.name} section's turn. Listen and count the rhythm to pass!`;
+                if (phase === 'pass') return `Glorious! The ${team.name} advanced! Now the ${targetTeam.name} must step up.`;
+                if (phase === 'fail') return `Oh no! The ${team.name} stumbled on their rhythm!`;
+                if (phase === 'steal_opportunity') return `The rhythm echoes! The ${targetTeam.name} have a chance to STEAL the point!`;
+                if (phase === 'steal_pass') return `What a steal! The ${team.name} snatched a point! Now it's the ${targetTeam.name}'s regular turn.`;
+                if (phase === 'steal_fail') return `Disaster! The ${team.name} failed their steal, losing a step and taking double damage! Now it's the ${targetTeam.name}'s regular turn.`;
+                if (phase === 'gameover_win') return `Incredible! The ${team.name} have reached the Melody Chest! They are the supreme champions of Rhythm Quest!`;
+                if (phase === 'gameover_tpk') return `A tragedy! Every single section has failed too many times. The Melody Chest remains sealed forever!`;
+                return "The journey continues...";
             };
 
             const initAudio = () => {
@@ -238,8 +234,8 @@
                     osc.start(time);
                     osc.stop(time + 0.1);
                 } else {
-                    osc.type = 'sine'; // A smooth tone for holding notes
-                    osc.frequency.setValueAtTime(440, time); // Concert A (440Hz)
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(440, time);
 
                     const attack = 0.02;
                     const release = Math.min(0.05, duration * 0.2);
@@ -276,8 +272,6 @@
                 const flatRhythm = currentRhythm.flat();
                 flatRhythm.forEach(noteDuration => {
                     const durationInSeconds = noteDuration * beatDuration;
-                    
-                    // We need a tiny gap between notes so repeated notes (like two half notes) don't blur into one long note.
                     const articulationGap = Math.min(0.05, durationInSeconds * 0.1); 
                     const playDuration = durationInSeconds - articulationGap;
 
@@ -295,7 +289,6 @@
                 if (!userApiKey.trim()) return;
                 setKeyStatus('testing');
                 try {
-                    // Uses the user's selected model for the test
                     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:generateContent?key=${userApiKey}`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
@@ -305,6 +298,8 @@
                     });
                     if (response.ok) {
                         setKeyStatus('success');
+                        localStorage.setItem('rq_api_key', userApiKey);
+                        localStorage.setItem('rq_model', selectedModel);
                     } else {
                         const errData = await response.json();
                         console.error("API Key Test Failed. Details:", errData);
@@ -316,71 +311,130 @@
                 }
             };
 
+            const getNextAliveTeam = (currentFails, currentQueue) => {
+                const activeIndices = TEAMS.map((_, i) => i).filter(i => currentFails[TEAMS[i].id] < MAX_FAILS);
+                if (activeIndices.length === 0) return null;
+
+                let nextQueue = currentQueue.filter(i => activeIndices.includes(i));
+                if (nextQueue.length === 0) {
+                    nextQueue = getShuffledTeams().filter(i => activeIndices.includes(i));
+                }
+                return { teamIdx: nextQueue[0], newQueue: nextQueue.slice(1) };
+            };
+
             const startGame = () => {
-                initAudio(); // Require user gesture
+                initAudio();
                 const initialQueue = getShuffledTeams();
                 setCurrentTeamIndex(initialQueue[0]);
                 setTurnQueue(initialQueue.slice(1));
                 setPositions({ flutes: 0, clarinets: 0, saxophones: 0, trumpets: 0, lowbrass: 0, percussion: 0 });
                 setFails({ flutes: 0, clarinets: 0, saxophones: 0, trumpets: 0, lowbrass: 0, percussion: 0 });
+                
                 const initialRhythm = generateMeasure(0);
                 setCurrentRhythm(initialRhythm);
                 setReplaysLeft(2);
                 setShowRhythm(false);
                 setGamePhase('playing');
-                fetchDMStory('start', 0, initialQueue[0]);
+                setStory(generateStoryText('start', TEAMS[initialQueue[0]]));
             };
 
-            const handleResult = async (passed) => {
-                const currentTeam = TEAMS[currentTeamIndex];
-                let newPositions = { ...positions };
-                let newFails = { ...fails };
-                let isGameOver = false;
-
-                if (passed) {
-                    newPositions[currentTeam.id] += 1;
-                    setPositions(newPositions);
-                    if (newPositions[currentTeam.id] >= MAX_STEPS) {
-                        isGameOver = true;
-                        setWinner(currentTeam);
-                        setGamePhase('gameover');
-                        await fetchDMStory('pass', currentTeamIndex, currentTeamIndex, true, false);
-                        return;
-                    }
-                } else {
-                    newFails[currentTeam.id] += 1;
-                    setFails(newFails);
-                    
-                    // Check if all active teams are eliminated
-                    const aliveTeams = TEAMS.filter(t => newFails[t.id] < MAX_FAILS);
-                    if (aliveTeams.length === 0) {
-                        setGamePhase('gameover');
-                        setWinner(null); // No winner, all eliminated
-                        await fetchDMStory('fail', currentTeamIndex, null, false, true);
-                        return;
-                    }
+            const handleTurnAdvance = (newPositions, newFails, lastActionStory) => {
+                const nextTarget = getNextAliveTeam(newFails, turnQueue);
+                
+                if (!nextTarget) {
+                    setGamePhase('gameover');
+                    setWinner(null);
+                    setStory(generateStoryText('gameover_tpk'));
+                    return;
                 }
 
-                // Determine active teams
-                const activeTeamIndices = TEAMS.map((_, i) => i).filter(i => newFails[TEAMS[i].id] < MAX_FAILS);
+                setTurnQueue(nextTarget.newQueue);
+                setCurrentTeamIndex(nextTarget.teamIdx);
                 
-                let nextQueue = turnQueue.filter(i => activeTeamIndices.includes(i));
-                if (nextQueue.length === 0) {
-                    nextQueue = getShuffledTeams().filter(i => activeTeamIndices.includes(i));
-                }
-                
-                const nextTeamIdx = nextQueue[0];
-                setTurnQueue(nextQueue.slice(1));
-                setCurrentTeamIndex(nextTeamIdx);
-                
-                const nextDifficulty = newPositions[TEAMS[nextTeamIdx].id];
+                const nextDifficulty = newPositions[TEAMS[nextTarget.teamIdx].id];
                 const nextRhythm = generateMeasure(nextDifficulty);
                 setCurrentRhythm(nextRhythm);
                 setReplaysLeft(2);
                 setShowRhythm(false);
                 setGamePhase('playing');
-                
-                fetchDMStory(passed ? 'pass' : 'fail', currentTeamIndex, nextTeamIdx);
+                setStory(lastActionStory);
+            };
+
+            const handleNormalResult = (passed) => {
+                const currentTeam = TEAMS[currentTeamIndex];
+                let newPositions = { ...positions };
+                let newFails = { ...fails };
+
+                if (passed) {
+                    newPositions[currentTeam.id] += 1;
+                    setPositions(newPositions);
+                    if (newPositions[currentTeam.id] >= MAX_STEPS) {
+                        setWinner(currentTeam);
+                        setGamePhase('gameover');
+                        setStory(generateStoryText('gameover_win', currentTeam));
+                        return;
+                    }
+                    
+                    const nextTarget = getNextAliveTeam(newFails, turnQueue);
+                    if (nextTarget) {
+                        handleTurnAdvance(newPositions, newFails, generateStoryText('pass', currentTeam, TEAMS[nextTarget.teamIdx]));
+                    } else {
+                        setGamePhase('gameover'); setWinner(null); setStory(generateStoryText('gameover_tpk'));
+                    }
+                } else {
+                    newFails[currentTeam.id] += 1;
+                    setFails(newFails);
+                    
+                    const nextTarget = getNextAliveTeam(newFails, turnQueue);
+                    if (!nextTarget) {
+                        setGamePhase('gameover');
+                        setWinner(null);
+                        setStory(generateStoryText('gameover_tpk'));
+                        return;
+                    }
+
+                    // Go to steal phase
+                    setStealingTeamIndex(nextTarget.teamIdx);
+                    setGamePhase('steal_opportunity');
+                    setStory(generateStoryText('steal_opportunity', currentTeam, TEAMS[nextTarget.teamIdx]));
+                }
+            };
+
+            const handleStealDecision = (attemptSteal) => {
+                if (attemptSteal) {
+                    setGamePhase('judging_steal');
+                } else {
+                    // Passed on stealing. Normal advance.
+                    handleTurnAdvance(positions, fails, `The ${TEAMS[stealingTeamIndex].name} declined to steal. It is now their regular turn!`);
+                }
+            };
+
+            const handleStealResult = (stealSuccess) => {
+                const stealingTeam = TEAMS[stealingTeamIndex];
+                let newPositions = { ...positions };
+                let newFails = { ...fails };
+
+                if (stealSuccess) {
+                    newPositions[stealingTeam.id] += 1;
+                    setPositions(newPositions);
+                    
+                    if (newPositions[stealingTeam.id] >= MAX_STEPS) {
+                        setWinner(stealingTeam);
+                        setGamePhase('gameover');
+                        setStory(generateStoryText('gameover_win', stealingTeam));
+                        return;
+                    }
+                    
+                    handleTurnAdvance(newPositions, newFails, generateStoryText('steal_pass', stealingTeam, TEAMS[stealingTeamIndex]));
+                } else {
+                    // Steal failed! -1 position (min 0), +2 fails!
+                    newPositions[stealingTeam.id] = Math.max(0, newPositions[stealingTeam.id] - 1);
+                    newFails[stealingTeam.id] += 2;
+                    setPositions(newPositions);
+                    setFails(newFails);
+
+                    handleTurnAdvance(newPositions, newFails, generateStoryText('steal_fail', stealingTeam, TEAMS[stealingTeamIndex]));
+                }
             };
 
             const renderTrack = () => {
@@ -390,15 +444,18 @@
                         <div className="space-y-4">
                             {TEAMS.map((team, idx) => {
                                 const isEliminated = fails[team.id] >= MAX_FAILS;
-                                const isCurrentTurn = currentTeamIndex === idx && gamePhase !== 'gameover' && !isEliminated;
+                                const isCurrentTurn = currentTeamIndex === idx && (gamePhase === 'playing' || gamePhase === 'judging') && !isEliminated;
+                                const isStealingTurn = stealingTeamIndex === idx && (gamePhase === 'steal_opportunity' || gamePhase === 'judging_steal') && !isEliminated;
                                 
                                 return (
                                 <div key={team.id} className={`relative transition-opacity duration-500 ${isEliminated ? 'opacity-40 grayscale' : 'opacity-100'}`}>
                                     <div className="flex items-center mb-1">
-                                        <div className={`w-36 font-bold flex flex-col justify-center ${isCurrentTurn ? 'text-emerald-700' : 'text-gray-600'}`}>
-                                            <div className={`text-lg ${isCurrentTurn ? 'text-xl' : ''}`}>
+                                        <div className={`w-40 font-bold flex flex-col justify-center ${isCurrentTurn ? 'text-emerald-700' : isStealingTurn ? 'text-amber-600' : 'text-gray-600'}`}>
+                                            <div className={`text-lg flex items-center ${(isCurrentTurn || isStealingTurn) ? 'text-xl' : ''}`}>
                                                 {isCurrentTurn && <i className="fa-solid fa-caret-right mr-2 text-emerald-500 animate-pulse"></i>}
+                                                {isStealingTurn && <i className="fa-solid fa-mask mr-2 text-amber-500 animate-bounce"></i>}
                                                 {team.name}
+                                                <span className="ml-2 text-xs bg-gray-200 px-2 py-1 rounded-md">Lvl {Math.min(9, positions[team.id] + 1)}</span>
                                             </div>
                                             <div className="flex text-red-500 text-xs mt-1">
                                                 {[...Array(MAX_FAILS)].map((_, i) => (
@@ -408,17 +465,15 @@
                                             {isEliminated && <div className="text-red-700 text-xs font-black uppercase mt-1">Eliminated!</div>}
                                         </div>
                                         <div className="flex-1 h-12 bg-gray-200 rounded-full relative track-bg border-2 border-gray-300 overflow-hidden ml-2">
-                                            {/* Finish Line Marker */}
                                             <div className="absolute right-0 top-0 bottom-0 w-8 bg-yellow-400 border-l-4 border-yellow-600 flex items-center justify-center z-10">
                                                 <i className="fa-solid fa-gem text-white text-xs"></i>
                                             </div>
                                             
-                                            {/* Avatar position */}
                                             <div 
                                                 className={`absolute top-0 bottom-0 transition-all duration-700 ease-in-out flex items-center justify-center z-20`}
                                                 style={{ left: `${(positions[team.id] / MAX_STEPS) * 92}%`, width: '8%' }}
                                             >
-                                                <div className={`w-10 h-10 ${team.color} ${team.border} border-2 rounded-full flex items-center justify-center shadow-md ${isCurrentTurn ? 'transform scale-125 ring-4 ring-emerald-300' : ''}`}>
+                                                <div className={`w-10 h-10 ${team.color} ${team.border} border-2 rounded-full flex items-center justify-center shadow-md ${isCurrentTurn ? 'transform scale-125 ring-4 ring-emerald-300' : isStealingTurn ? 'transform scale-125 ring-4 ring-amber-400' : ''}`}>
                                                     <i className={`fa-solid ${team.icon} text-white`}></i>
                                                 </div>
                                             </div>
@@ -435,7 +490,6 @@
             if (appView === 'title') {
                 return (
                     <div className="min-h-screen bg-emerald-950 p-4 flex items-center justify-center relative overflow-hidden">
-                        {/* Decorative Background Elements */}
                         <div className="absolute top-[-10%] left-[-10%] w-96 h-96 bg-emerald-800 rounded-full opacity-50 blur-3xl"></div>
                         <div className="absolute bottom-[-10%] right-[-10%] w-96 h-96 bg-teal-800 rounded-full opacity-50 blur-3xl"></div>
                         
@@ -443,16 +497,21 @@
                             <h1 className="text-5xl md:text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-emerald-600 to-teal-500 mb-2 drop-shadow-sm">
                                 Mr.A's Rhythm Quest
                             </h1>
-                            <div className="text-gray-500 font-bold tracking-widest uppercase mb-10 text-xl flex items-center justify-center gap-3">
+                            <div className="text-gray-500 font-bold tracking-widest uppercase mb-6 text-xl flex items-center justify-center gap-3">
                                 <span className="h-px w-8 bg-gray-300"></span>
-                                Version 1.0
+                                Version 1.1
                                 <span className="h-px w-8 bg-gray-300"></span>
                             </div>
                             
                             <div className="mb-8 text-left bg-gray-50 p-6 rounded-xl border border-gray-200 shadow-inner">
+                                <div className="bg-blue-100 text-blue-800 p-4 rounded-lg mb-4 text-sm font-semibold border border-blue-200">
+                                    <i className="fa-solid fa-bolt mr-2 text-blue-600"></i>
+                                    Update: The AI Dungeon Master has been removed to ensure faster, flawless rhythm generation! The API Key is now strictly optional (saved locally if entered).
+                                </div>
+
                                 <label className="block text-gray-800 font-bold mb-3 text-lg">
                                     <i className="fa-solid fa-key mr-3 text-emerald-600"></i>
-                                    Enter Gemini API Key
+                                    Gemini API Key (Optional)
                                 </label>
                                 <input 
                                     type="password" 
@@ -462,44 +521,45 @@
                                     placeholder="AIzaSy..."
                                 />
                                 
-                                <label className="block text-gray-800 font-bold mb-3 text-lg">
-                                    <i className="fa-solid fa-microchip mr-3 text-emerald-600"></i>
-                                    Select Gemini Model
-                                </label>
-                                <select 
-                                    value={selectedModel}
-                                    onChange={(e) => { setSelectedModel(e.target.value); setKeyStatus('idle'); }}
-                                    className="w-full px-5 py-4 rounded-xl border-2 border-gray-300 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100 focus:outline-none transition-all text-lg font-mono bg-white appearance-none"
-                                >
-                                    <option value="gemini-1.5-flash">Gemini 1.5 Flash (Recommended)</option>
-                                    <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
-                                    <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
-                                    <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
-                                </select>
-                                
-                                <p className="text-sm text-gray-500 mt-4 font-medium">
-                                    <i className="fa-solid fa-circle-info mr-2"></i>
-                                    Required to power the Dungeon Master AI.
-                                </p>
+                                {userApiKey.trim() && (
+                                    <>
+                                        <label className="block text-gray-800 font-bold mb-3 text-lg">
+                                            <i className="fa-solid fa-microchip mr-3 text-emerald-600"></i>
+                                            Select Gemini Model
+                                        </label>
+                                        <select 
+                                            value={selectedModel}
+                                            onChange={(e) => { setSelectedModel(e.target.value); setKeyStatus('idle'); }}
+                                            className="w-full px-5 py-4 rounded-xl border-2 border-gray-300 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100 focus:outline-none transition-all text-lg font-mono bg-white appearance-none"
+                                        >
+                                            <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+                                            <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
+                                            <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+                                            <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+                                        </select>
+                                    </>
+                                )}
                             </div>
 
-                            <div className="flex flex-col gap-5">
-                                <button 
-                                    onClick={testApiKey}
-                                    disabled={keyStatus === 'testing' || !userApiKey.trim()}
-                                    className={`px-6 py-4 rounded-xl font-bold text-lg text-white shadow-md transition-all ${keyStatus === 'testing' || !userApiKey.trim() ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 hover:-translate-y-1'}`}
-                                >
-                                    {keyStatus === 'testing' ? (
-                                        <span><i className="fa-solid fa-spinner fa-spin mr-2"></i>Testing Magic...</span>
-                                    ) : (
-                                        <span><i className="fa-solid fa-wand-magic-sparkles mr-2"></i>Test Key</span>
-                                    )}
-                                </button>
+                            <div className="flex flex-col gap-4">
+                                {userApiKey.trim() && (
+                                    <button 
+                                        onClick={testApiKey}
+                                        disabled={keyStatus === 'testing'}
+                                        className={`px-6 py-4 rounded-xl font-bold text-lg text-white shadow-md transition-all ${keyStatus === 'testing' ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 hover:-translate-y-1'}`}
+                                    >
+                                        {keyStatus === 'testing' ? (
+                                            <span><i className="fa-solid fa-spinner fa-spin mr-2"></i>Testing Magic...</span>
+                                        ) : (
+                                            <span><i className="fa-solid fa-wand-magic-sparkles mr-2"></i>Test Key & Save</span>
+                                        )}
+                                    </button>
+                                )}
 
                                 <div className="h-8 flex items-center justify-center">
                                     {keyStatus === 'success' && (
                                         <div className="text-green-600 font-bold animate-bounce text-lg">
-                                            <i className="fa-solid fa-check-circle mr-2"></i> Key Verified! Magic flows!
+                                            <i className="fa-solid fa-check-circle mr-2"></i> Key Verified & Saved Locally!
                                         </div>
                                     )}
                                     {keyStatus === 'error' && (
@@ -511,8 +571,7 @@
 
                                 <button 
                                     onClick={() => setAppView('game')}
-                                    disabled={keyStatus !== 'success'}
-                                    className={`mt-2 px-8 py-5 rounded-2xl font-black text-2xl shadow-xl transition-all ${keyStatus === 'success' ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white hover:scale-105 hover:shadow-2xl' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
+                                    className={`mt-2 px-8 py-5 rounded-2xl font-black text-2xl shadow-xl transition-all bg-gradient-to-r from-emerald-500 to-teal-500 text-white hover:scale-105 hover:shadow-2xl`}
                                 >
                                     Begin Quest <i className="fa-solid fa-arrow-right ml-2"></i>
                                 </button>
@@ -541,33 +600,30 @@
                     <div className="bg-white rounded-2xl shadow-xl overflow-hidden border-2 border-gray-100 flex-1 flex flex-col">
                         <div className="bg-emerald-900 p-4 text-white flex justify-between items-center">
                             <div className="font-bold text-xl flex items-center">
-                                <i className="fa-solid fa-dragon mr-3 text-emerald-300"></i>
-                                Dungeon Master's Tale
+                                <i className="fa-solid fa-scroll mr-3 text-emerald-300"></i>
+                                Encounter Log
                             </div>
                             {gamePhase !== 'start' && gamePhase !== 'gameover' && (
-                                <div className="bg-emerald-800 px-4 py-1 rounded-full text-emerald-200 font-semibold border border-emerald-600">
-                                    Current Turn: {TEAMS[currentTeamIndex].name} ({TEAMS[currentTeamIndex].count} heroes)
+                                <div className={`px-4 py-1 rounded-full font-semibold border ${gamePhase.includes('steal') ? 'bg-amber-800 text-amber-200 border-amber-600' : 'bg-emerald-800 text-emerald-200 border-emerald-600'}`}>
+                                    {gamePhase.includes('steal') ? (
+                                        <>Steal Opportunity: {TEAMS[stealingTeamIndex].name}</>
+                                    ) : (
+                                        <>Current Turn: {TEAMS[currentTeamIndex].name} (Lvl {Math.min(9, positions[TEAMS[currentTeamIndex].id] + 1)})</>
+                                    )}
                                 </div>
                             )}
                         </div>
                         
                         <div className="p-8 flex-1 flex flex-col items-center justify-center text-center">
-                            {loading ? (
-                                <div className="flex flex-col items-center text-emerald-700 my-8">
-                                    <i className="fa-solid fa-compass fa-spin text-5xl mb-4 text-emerald-400"></i>
-                                    <p className="font-semibold text-lg animate-pulse">The Dungeon Master is conjuring the next trial...</p>
-                                </div>
-                            ) : (
-                                <p className="text-2xl font-serif text-gray-800 leading-relaxed mb-8 italic">"{story}"</p>
-                            )}
+                            <p className="text-2xl font-serif text-gray-800 leading-relaxed mb-8 italic">"{story}"</p>
 
-                            {gamePhase === 'start' && !loading && (
+                            {gamePhase === 'start' && (
                                 <button onClick={startGame} className="mt-4 px-10 py-4 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white font-bold rounded-full text-2xl shadow-lg transform transition hover:scale-105">
                                     Start Quest
                                 </button>
                             )}
 
-                            {gamePhase === 'gameover' && !loading && (
+                            {gamePhase === 'gameover' && (
                                 <div className="mt-8 animate-bounce">
                                     {winner ? (
                                         <h2 className="text-4xl font-black text-yellow-500 mb-4">
@@ -588,35 +644,37 @@
                                 </div>
                             )}
 
-                            {(gamePhase === 'playing' || gamePhase === 'judging') && !loading && (
-                                <div className="w-full max-w-2xl bg-gray-50 p-6 rounded-xl border-2 border-dashed border-gray-300">
+                            {(gamePhase === 'playing' || gamePhase === 'judging' || gamePhase === 'steal_opportunity' || gamePhase === 'judging_steal') && (
+                                <div className="w-full max-w-3xl bg-gray-50 p-6 rounded-xl border-2 border-dashed border-gray-300">
                                     <h3 className="text-xl font-bold text-gray-700 mb-6 uppercase tracking-wider">Teacher Controls</h3>
                                     
-                                    <div className="flex flex-col md:flex-row gap-4 justify-center items-center mb-8">
-                                        <button 
-                                            onClick={playRhythmAudio}
-                                            disabled={replaysLeft <= 0}
-                                            className={`flex items-center px-6 py-4 rounded-xl font-bold text-lg text-white shadow-md transition-all ${replaysLeft > 0 ? 'bg-indigo-500 hover:bg-indigo-600 transform hover:-translate-y-1' : 'bg-gray-400 cursor-not-allowed'}`}
-                                        >
-                                            <i className="fa-solid fa-volume-high mr-3 text-2xl"></i>
-                                            Play Rhythm ({replaysLeft} Replays Left)
-                                        </button>
-
-                                        {gamePhase === 'judging' && (
+                                    {(gamePhase === 'playing' || gamePhase === 'judging') && (
+                                        <div className="flex flex-col md:flex-row gap-4 justify-center items-center mb-8">
                                             <button 
-                                                onClick={() => setShowRhythm(true)}
-                                                className="flex items-center px-6 py-4 rounded-xl font-bold text-lg bg-blue-500 hover:bg-blue-600 text-white shadow-md transform transition hover:-translate-y-1"
+                                                onClick={playRhythmAudio}
+                                                disabled={replaysLeft <= 0}
+                                                className={`flex items-center px-6 py-4 rounded-xl font-bold text-lg text-white shadow-md transition-all ${replaysLeft > 0 ? 'bg-indigo-500 hover:bg-indigo-600 transform hover:-translate-y-1' : 'bg-gray-400 cursor-not-allowed'}`}
                                             >
-                                                <i className="fa-solid fa-eye mr-3 text-2xl"></i>
-                                                Reveal Rhythm
+                                                <i className="fa-solid fa-volume-high mr-3 text-2xl"></i>
+                                                Play Rhythm ({replaysLeft} Replays Left)
                                             </button>
-                                        )}
-                                    </div>
+
+                                            {gamePhase === 'judging' && (
+                                                <button 
+                                                    onClick={() => setShowRhythm(true)}
+                                                    className="flex items-center px-6 py-4 rounded-xl font-bold text-lg bg-blue-500 hover:bg-blue-600 text-white shadow-md transform transition hover:-translate-y-1"
+                                                >
+                                                    <i className="fa-solid fa-eye mr-3 text-2xl"></i>
+                                                    Reveal Rhythm
+                                                </button>
+                                            )}
+                                        </div>
+                                    )}
 
                                     {showRhythm && (
                                         <div className="my-8 bg-white p-6 rounded-lg border border-gray-200 shadow-inner">
-                                            <div className="text-gray-500 font-bold mb-2 uppercase text-sm">Correct Rhythm (4/4 Time)</div>
-                                            <div className="flex justify-center items-end h-24 text-gray-800">
+                                            <div className="text-gray-500 font-bold mb-2 uppercase text-sm">Correct Rhythm</div>
+                                            <div className="flex flex-wrap justify-center items-end min-h-[6rem] gap-y-6 text-gray-800">
                                                 {currentRhythm.map((group, i) => renderRhythmGroup(group, i))}
                                             </div>
                                         </div>
@@ -626,15 +684,46 @@
                                         <div className="border-t-2 border-gray-200 pt-6 mt-6">
                                             <p className="text-gray-600 font-bold mb-4">Did the {TEAMS[currentTeamIndex].name} count it correctly out loud?</p>
                                             <div className="flex gap-4 justify-center">
-                                                <button onClick={() => handleResult(true)} className="px-8 py-3 bg-green-500 hover:bg-green-600 text-white font-bold rounded-lg shadow flex items-center text-xl">
+                                                <button onClick={() => handleNormalResult(true)} className="px-8 py-3 bg-green-500 hover:bg-green-600 text-white font-bold rounded-lg shadow flex items-center text-xl">
                                                     <i className="fa-solid fa-check-circle mr-2"></i> Pass
                                                 </button>
-                                                <button onClick={() => handleResult(false)} className="px-8 py-3 bg-red-500 hover:bg-red-600 text-white font-bold rounded-lg shadow flex items-center text-xl">
+                                                <button onClick={() => handleNormalResult(false)} className="px-8 py-3 bg-red-500 hover:bg-red-600 text-white font-bold rounded-lg shadow flex items-center text-xl">
                                                     <i className="fa-solid fa-times-circle mr-2"></i> Fail
                                                 </button>
                                             </div>
                                         </div>
                                     )}
+
+                                    {gamePhase === 'steal_opportunity' && (
+                                        <div className="border-t-2 border-amber-200 bg-amber-50 p-6 rounded-xl mt-6 shadow-inner">
+                                            <p className="text-amber-800 font-bold mb-4 text-xl"><i className="fa-solid fa-mask mr-2"></i> STEAL OPPORTUNITY!</p>
+                                            <p className="text-amber-700 mb-6 font-medium">Do the {TEAMS[stealingTeamIndex].name} want to attempt a steal? (Risk: -1 Pos, +2 Fails if wrong!)</p>
+                                            <div className="flex gap-4 justify-center">
+                                                <button onClick={() => handleStealDecision(true)} className="px-8 py-3 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-lg shadow flex items-center text-lg">
+                                                    <i className="fa-solid fa-bolt mr-2"></i> Attempt Steal!
+                                                </button>
+                                                <button onClick={() => handleStealDecision(false)} className="px-8 py-3 bg-gray-500 hover:bg-gray-600 text-white font-bold rounded-lg shadow flex items-center text-lg">
+                                                    <i className="fa-solid fa-forward mr-2"></i> Pass
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {gamePhase === 'judging_steal' && (
+                                        <div className="border-t-2 border-amber-200 bg-amber-50 p-6 rounded-xl mt-6 shadow-inner">
+                                            <p className="text-amber-800 font-bold mb-4 text-xl">Judging Steal...</p>
+                                            <p className="text-amber-700 mb-6 font-medium">Did the {TEAMS[stealingTeamIndex].name} count the revealed rhythm perfectly?</p>
+                                            <div className="flex gap-4 justify-center">
+                                                <button onClick={() => handleStealResult(true)} className="px-6 py-3 bg-green-500 hover:bg-green-600 text-white font-bold rounded-lg shadow flex items-center text-lg">
+                                                    <i className="fa-solid fa-check-double mr-2"></i> Steal Successful!
+                                                </button>
+                                                <button onClick={() => handleStealResult(false)} className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg shadow flex items-center text-lg">
+                                                    <i className="fa-solid fa-skull-crossbones mr-2"></i> Steal Failed!
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+
                                 </div>
                             )}
                         </div>
