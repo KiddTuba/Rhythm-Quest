@@ -150,6 +150,7 @@
         const App = () => {
             const [appView, setAppView] = React.useState('title'); // 'title' or 'game'
             const [userApiKey, setUserApiKey] = React.useState(apiKey);
+            const [selectedModel, setSelectedModel] = React.useState('gemini-1.5-flash');
             const [keyStatus, setKeyStatus] = React.useState('idle'); // idle, testing, success, error
             
             const [positions, setPositions] = React.useState({ flutes: 0, clarinets: 0, saxophones: 0, trumpets: 0, lowbrass: 0, percussion: 0 });
@@ -187,8 +188,8 @@
                         prompt = `${transition} Now it is the ${nextTeam.name} section's turn. Write a short, exciting, school-appropriate (G-rated) scenario (2 sentences max) where they encounter a NEW obstacle on their way to the Melody Chest. End by saying "Listen and count the rhythm to pass!"`;
                     }
 
-                    // Switched to gemini-1.5-flash for compatibility with external user API keys
-                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${userApiKey}`, {
+                    // Uses the user's selected model!
+                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:generateContent?key=${userApiKey}`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
@@ -294,8 +295,8 @@
                 if (!userApiKey.trim()) return;
                 setKeyStatus('testing');
                 try {
-                    // Switched to gemini-1.5-flash for compatibility with external user API keys
-                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${userApiKey}`, {
+                    // Uses the user's selected model for the test
+                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:generateContent?key=${userApiKey}`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
@@ -457,10 +458,26 @@
                                     type="password" 
                                     value={userApiKey} 
                                     onChange={(e) => { setUserApiKey(e.target.value); setKeyStatus('idle'); }}
-                                    className="w-full px-5 py-4 rounded-xl border-2 border-gray-300 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100 focus:outline-none transition-all text-lg font-mono"
+                                    className="w-full px-5 py-4 rounded-xl border-2 border-gray-300 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100 focus:outline-none transition-all text-lg font-mono mb-4"
                                     placeholder="AIzaSy..."
                                 />
-                                <p className="text-sm text-gray-500 mt-3 font-medium">
+                                
+                                <label className="block text-gray-800 font-bold mb-3 text-lg">
+                                    <i className="fa-solid fa-microchip mr-3 text-emerald-600"></i>
+                                    Select Gemini Model
+                                </label>
+                                <select 
+                                    value={selectedModel}
+                                    onChange={(e) => { setSelectedModel(e.target.value); setKeyStatus('idle'); }}
+                                    className="w-full px-5 py-4 rounded-xl border-2 border-gray-300 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100 focus:outline-none transition-all text-lg font-mono bg-white appearance-none"
+                                >
+                                    <option value="gemini-1.5-flash">Gemini 1.5 Flash (Recommended)</option>
+                                    <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
+                                    <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+                                    <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+                                </select>
+                                
+                                <p className="text-sm text-gray-500 mt-4 font-medium">
                                     <i className="fa-solid fa-circle-info mr-2"></i>
                                     Required to power the Dungeon Master AI.
                                 </p>
@@ -487,7 +504,7 @@
                                     )}
                                     {keyStatus === 'error' && (
                                         <div className="text-red-600 font-bold text-lg">
-                                            <i className="fa-solid fa-circle-exclamation mr-2"></i> Invalid Key. The magic fizzles.
+                                            <i className="fa-solid fa-circle-exclamation mr-2"></i> Invalid Key or Model.
                                         </div>
                                     )}
                                 </div>
