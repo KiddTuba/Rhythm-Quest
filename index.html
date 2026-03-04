@@ -13,8 +13,6 @@
         body { background-color: #f0fdfa; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         .rhythm-symbol { font-size: 3rem; margin: 0 0.25rem; display: inline-block; }
         .track-bg { background-image: repeating-linear-gradient(45deg, #e5e7eb 25%, transparent 25%, transparent 75%, #e5e7eb 75%, #e5e7eb), repeating-linear-gradient(45deg, #e5e7eb 25%, #ffffff 25%, #ffffff 75%, #e5e7eb 75%, #e5e7eb); background-position: 0 0, 10px 10px; background-size: 20px 20px; }
-        
-        /* Custom scrollbar for settings */
         ::-webkit-scrollbar { width: 8px; height: 8px; }
         ::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
         ::-webkit-scrollbar-thumb { background: #10b981; border-radius: 4px; }
@@ -43,10 +41,16 @@
             { id: 't2', name: 'Trumpets', color: PALETTE[3].c, border: PALETTE[3].b, icon: PALETTE[3].i },
         ];
 
+        const METERS = [
+            { id: '4/4', b: 4.0 }, { id: '3/4', b: 3.0 }, { id: '2/4', b: 2.0 }, { id: '1/4', b: 1.0 },
+            { id: '2/2', b: 4.0 }, { id: '3/2', b: 6.0 }, { id: '3/8', b: 1.5 }, { id: '5/8', b: 2.5 },
+            { id: '6/8', b: 3.0 }, { id: '7/8', b: 3.5 }, { id: '9/8', b: 4.5 }, { id: '12/8', b: 6.0 },
+            { id: '9/16', b: 2.25 }, { id: '12/16', b: 3.0 }
+        ];
+
         const MAX_STEPS = 10;
         const MAX_FAILS = 4;
 
-        // Master Dictionary of all Rhythms
         const RHYTHM_DICT = [
             { id: 'whole', name: 'Whole Note', beats: [4.0] },
             { id: 'half', name: 'Half Note', beats: [2.0] },
@@ -55,11 +59,11 @@
             { id: 'four_16ths', name: 'Four 16th Notes', beats: [0.25, 0.25, 0.25, 0.25] },
             { id: '8th_two_16ths', name: '8th & Two 16ths', beats: [0.5, 0.25, 0.25] },
             { id: 'two_16ths_8th', name: 'Two 16ths & 8th', beats: [0.25, 0.25, 0.5] },
+            { id: 'dotted_8th_16th', name: 'Dotted 8th & 16th', beats: [0.75, 0.25] },
             { id: '8th_triplets', name: '8th Note Triplets', beats: [1/3, 1/3, 1/3] },
             { id: '16th_triplets_start', name: '16th Triplets & 8th', beats: [1/6, 1/6, 1/6, 0.5] },
             { id: '16th_triplets_end', name: '8th & 16th Triplets', beats: [0.5, 1/6, 1/6, 1/6] },
-            { id: 'syncopation', name: 'Syncopation (8th-Qtr-8th)', beats: [0.5, 1.0, 0.5] },
-            { id: 'dotted_qtr_8th', name: 'Dotted Qtr & 8th', beats: [1.5, 0.5] }
+            { id: 'syncopation', name: 'Syncopation (8th-Qtr-8th)', beats: [0.5, 1.0, 0.5] }
         ];
 
         const DEFAULT_RHYTHM_SETTINGS = {
@@ -70,18 +74,23 @@
             'four_16ths': [false, false, false, true, true, true, true, true, true, true],
             '8th_two_16ths': [false, false, false, false, true, true, true, true, true, true],
             'two_16ths_8th': [false, false, false, false, true, true, true, true, true, true],
+            'dotted_8th_16th': [false, false, false, false, true, true, true, true, true, true],
             '8th_triplets': [false, false, false, false, false, false, true, true, true, true],
             '16th_triplets_start': [false, false, false, false, false, false, false, true, true, true],
             '16th_triplets_end': [false, false, false, false, false, false, false, true, true, true],
-            'syncopation': [false, false, false, false, false, false, false, false, true, true],
-            'dotted_qtr_8th': [false, false, false, false, false, false, false, false, true, true]
+            'syncopation': [false, false, false, false, false, false, false, false, true, true]
         };
 
+        const DEFAULT_RULES = { meter: '4/4', countingSys: 'eastman', gauntlet: false };
+
         const getSavedSettings = () => {
-            try {
-                const saved = localStorage.getItem('rq_settings');
-                return saved ? JSON.parse(saved) : DEFAULT_RHYTHM_SETTINGS;
-            } catch { return DEFAULT_RHYTHM_SETTINGS; }
+            try { return JSON.parse(localStorage.getItem('rq_settings')) || DEFAULT_RHYTHM_SETTINGS; } 
+            catch { return DEFAULT_RHYTHM_SETTINGS; }
+        };
+
+        const getSavedRules = () => {
+            try { return JSON.parse(localStorage.getItem('rq_rules')) || DEFAULT_RULES; } 
+            catch { return DEFAULT_RULES; }
         };
 
         const getShuffledTeams = (teamsArray) => {
@@ -93,31 +102,70 @@
             return indices;
         };
 
-        const renderRhythmGroup = (group, index) => {
+        const getCountArrayForGroup = (group, startPos, sys) => {
+            const getSyllable = (pos, duration) => {
+                const b = Math.floor(pos) + 1;
+                const f = pos - Math.floor(pos);
+                let syl = '';
+                
+                if (Math.abs(f - 0) < 0.01) syl = b.toString();
+                else if (Math.abs(f - 0.5) < 0.01) syl = sys === 'eastman' ? 'te' : '&';
+                else if (Math.abs(f - 0.25) < 0.01) syl = sys === 'eastman' ? 'ti' : 'e';
+                else if (Math.abs(f - 0.75) < 0.01) syl = sys === 'eastman' ? 'ta' : 'a';
+                else if (Math.abs(f - 1/3) < 0.01) syl = sys === 'eastman' ? 'la' : 'trip';
+                else if (Math.abs(f - 2/3) < 0.01) syl = sys === 'eastman' ? 'li' : 'let';
+                else if (Math.abs(f - 1/6) < 0.01) syl = sys === 'eastman' ? 'ta' : 'e'; 
+                else if (Math.abs(f - 5/6) < 0.01) syl = sys === 'eastman' ? 'ta' : 'a';
+                else syl = '+';
+
+                // Format dashed durations based on specific request
+                if (Math.abs(f - 0) < 0.01) {
+                    if (Math.abs(duration - 4.0) < 0.01) return `${b} - - -`;
+                    if (Math.abs(duration - 3.0) < 0.01) return `${b} - -`;
+                    if (Math.abs(duration - 2.0) < 0.01) return `${b} - ${b+2 > 4 ? 1 : b+2}-`; // E.g., 1 - 3 -
+                }
+                
+                if (duration === 1.0 && Math.abs(f - 0.5) < 0.01) return `${syl}-`;
+                if (duration === 0.75) return `${syl}-`;
+
+                return syl;
+            };
+
+            let res = [];
+            let p = startPos;
+            for(let i=0; i<group.length; i++) {
+                res.push(getSyllable(p, group[i]));
+                p += group[i];
+            }
+            return res;
+        };
+
+        const renderRhythmGroup = (group, index, startPos, showCounts, sys) => {
             const key = `group-${index}`;
             const fuzzyMatch = (arr) => group.length === arr.length && group.every((v, i) => Math.abs(v - arr[i]) < 0.01);
+            
+            const counts = getCountArrayForGroup(group, startPos, sys);
+            let svgContent = null;
 
-            // Universal SVG replacements for Whole, Half, Quarter notes to prevent iOS square issues
-            if (fuzzyMatch([4.0])) return (
-                <svg key={key} viewBox="0 0 50 80" className="w-12 h-20 inline-block mx-1 fill-none stroke-current">
+            if (fuzzyMatch([4.0])) svgContent = (
+                <svg viewBox="0 0 50 80" className="w-12 h-20 fill-none stroke-current">
                     <ellipse cx="25" cy="65" rx="10" ry="7" transform="rotate(-20 25 65)" strokeWidth="4" />
                 </svg>
             );
-            if (fuzzyMatch([2.0])) return (
-                <svg key={key} viewBox="0 0 50 80" className="w-12 h-20 inline-block mx-1 fill-none stroke-current">
+            else if (fuzzyMatch([2.0])) svgContent = (
+                <svg viewBox="0 0 50 80" className="w-12 h-20 fill-none stroke-current">
                     <ellipse cx="15" cy="65" rx="8" ry="5" transform="rotate(-20 15 65)" strokeWidth="3" />
                     <line x1="22" y1="65" x2="22" y2="20" strokeWidth="2" />
                 </svg>
             );
-            if (fuzzyMatch([1.0])) return (
-                <svg key={key} viewBox="0 0 50 80" className="w-12 h-20 inline-block mx-1 fill-current stroke-current">
+            else if (fuzzyMatch([1.0])) svgContent = (
+                <svg viewBox="0 0 50 80" className="w-12 h-20 fill-current stroke-current">
                     <ellipse cx="15" cy="65" rx="8" ry="5" transform="rotate(-20 15 65)" />
                     <line x1="22" y1="65" x2="22" y2="20" strokeWidth="2" />
                 </svg>
             );
-
-            if (fuzzyMatch([0.5, 0.5])) return (
-                <svg key={key} viewBox="0 0 50 80" className="w-12 h-20 inline-block mx-1 fill-current stroke-current">
+            else if (fuzzyMatch([0.5, 0.5])) svgContent = (
+                <svg viewBox="0 0 50 80" className="w-12 h-20 fill-current stroke-current">
                     <ellipse cx="12" cy="65" rx="7" ry="5" transform="rotate(-20 12 65)" />
                     <ellipse cx="38" cy="65" rx="7" ry="5" transform="rotate(-20 38 65)" />
                     <line x1="17" y1="65" x2="17" y2="20" strokeWidth="2" />
@@ -125,45 +173,51 @@
                     <rect x="16" y="20" width="28" height="6" />
                 </svg>
             );
-
-            if (fuzzyMatch([0.25, 0.25, 0.25, 0.25])) return (
-                <svg key={key} viewBox="0 0 100 80" className="w-24 h-20 inline-block mx-1 fill-current stroke-current">
+            else if (fuzzyMatch([0.25, 0.25, 0.25, 0.25])) svgContent = (
+                <svg viewBox="0 0 100 80" className="w-24 h-20 fill-current stroke-current">
                     {[12, 37, 62, 87].map((cx, i) => <ellipse key={'h'+i} cx={cx} cy="65" rx="7" ry="5" transform={`rotate(-20 ${cx} 65)`} />)}
                     {[17, 42, 67, 92].map((x, i) => <line key={'s'+i} x1={x} y1="65" x2={x} y2="20" strokeWidth="2" />)}
                     <rect x="16" y="20" width="77" height="6" />
                     <rect x="16" y="30" width="77" height="6" />
                 </svg>
             );
-
-            if (fuzzyMatch([0.5, 0.25, 0.25])) return (
-                <svg key={key} viewBox="0 0 75 80" className="w-20 h-20 inline-block mx-1 fill-current stroke-current">
+            else if (fuzzyMatch([0.5, 0.25, 0.25])) svgContent = (
+                <svg viewBox="0 0 75 80" className="w-20 h-20 fill-current stroke-current">
                     {[12, 42, 62].map((cx, i) => <ellipse key={'h'+i} cx={cx} cy="65" rx="7" ry="5" transform={`rotate(-20 ${cx} 65)`} />)}
                     {[17, 47, 67].map((x, i) => <line key={'s'+i} x1={x} y1="65" x2={x} y2="20" strokeWidth="2" />)}
                     <rect x="16" y="20" width="52" height="6" />
                     <rect x="46" y="30" width="22" height="6" />
                 </svg>
             );
-
-            if (fuzzyMatch([0.25, 0.25, 0.5])) return (
-                <svg key={key} viewBox="0 0 75 80" className="w-20 h-20 inline-block mx-1 fill-current stroke-current">
+            else if (fuzzyMatch([0.25, 0.25, 0.5])) svgContent = (
+                <svg viewBox="0 0 75 80" className="w-20 h-20 fill-current stroke-current">
                     {[12, 32, 62].map((cx, i) => <ellipse key={'h'+i} cx={cx} cy="65" rx="7" ry="5" transform={`rotate(-20 ${cx} 65)`} />)}
                     {[17, 37, 67].map((x, i) => <line key={'s'+i} x1={x} y1="65" x2={x} y2="20" strokeWidth="2" />)}
                     <rect x="16" y="20" width="52" height="6" />
                     <rect x="16" y="30" width="22" height="6" />
                 </svg>
             );
-
-            if (fuzzyMatch([1/3, 1/3, 1/3])) return (
-                <svg key={key} viewBox="0 0 75 80" className="w-20 h-20 inline-block mx-1 fill-current stroke-current">
+            else if (fuzzyMatch([0.75, 0.25])) svgContent = (
+                <svg viewBox="0 0 50 80" className="w-12 h-20 fill-current stroke-current">
+                    <ellipse cx="12" cy="65" rx="7" ry="5" transform="rotate(-20 12 65)" />
+                    <circle cx="24" cy="60" r="2.5" />
+                    <ellipse cx="38" cy="65" rx="7" ry="5" transform="rotate(-20 38 65)" />
+                    <line x1="17" y1="65" x2="17" y2="20" strokeWidth="2" />
+                    <line x1="43" y1="65" x2="43" y2="20" strokeWidth="2" />
+                    <rect x="16" y="20" width="28" height="6" />
+                    <rect x="33" y="30" width="11" height="6" />
+                </svg>
+            );
+            else if (fuzzyMatch([1/3, 1/3, 1/3])) svgContent = (
+                <svg viewBox="0 0 75 80" className="w-20 h-20 fill-current stroke-current">
                     <text x="32" y="15" fontSize="14" fontWeight="bold">3</text>
                     {[12, 37, 62].map((cx, i) => <ellipse key={'h'+i} cx={cx} cy="65" rx="7" ry="5" transform={`rotate(-20 ${cx} 65)`} />)}
                     {[17, 42, 67].map((x, i) => <line key={'s'+i} x1={x} y1="65" x2={x} y2="25" strokeWidth="2" />)}
                     <rect x="16" y="25" width="52" height="6" />
                 </svg>
             );
-
-            if (fuzzyMatch([1/6, 1/6, 1/6, 0.5])) return (
-                <svg key={key} viewBox="0 0 100 80" className="w-24 h-20 inline-block mx-1 fill-current stroke-current">
+            else if (fuzzyMatch([1/6, 1/6, 1/6, 0.5])) svgContent = (
+                <svg viewBox="0 0 100 80" className="w-24 h-20 fill-current stroke-current">
                     <text x="37" y="15" fontSize="14" fontWeight="bold">3</text>
                     {[12, 37, 62, 87].map((cx, i) => <ellipse key={'h'+i} cx={cx} cy="65" rx="7" ry="5" transform={`rotate(-20 ${cx} 65)`} />)}
                     {[17, 42, 67, 92].map((x, i) => <line key={'s'+i} x1={x} y1="65" x2={x} y2="25" strokeWidth="2" />)}
@@ -171,9 +225,8 @@
                     <rect x="16" y="35" width="52" height="6" />
                 </svg>
             );
-
-            if (fuzzyMatch([0.5, 1/6, 1/6, 1/6])) return (
-                <svg key={key} viewBox="0 0 100 80" className="w-24 h-20 inline-block mx-1 fill-current stroke-current">
+            else if (fuzzyMatch([0.5, 1/6, 1/6, 1/6])) svgContent = (
+                <svg viewBox="0 0 100 80" className="w-24 h-20 fill-current stroke-current">
                     <text x="62" y="15" fontSize="14" fontWeight="bold">3</text>
                     {[12, 37, 62, 87].map((cx, i) => <ellipse key={'h'+i} cx={cx} cy="65" rx="7" ry="5" transform={`rotate(-20 ${cx} 65)`} />)}
                     {[17, 42, 67, 92].map((x, i) => <line key={'s'+i} x1={x} y1="65" x2={x} y2="25" strokeWidth="2" />)}
@@ -181,42 +234,34 @@
                     <rect x="41" y="35" width="52" height="6" />
                 </svg>
             );
-
-            // Syncopation
-            if (fuzzyMatch([0.5, 1.0, 0.5])) return (
-                <svg key={key} viewBox="0 0 100 80" className="w-24 h-20 inline-block mx-1 fill-current stroke-current">
+            else if (fuzzyMatch([0.5, 1.0, 0.5])) svgContent = (
+                <svg viewBox="0 0 100 80" className="w-24 h-20 fill-current stroke-current">
                     {[12, 50, 88].map((cx, i) => <ellipse key={'h'+i} cx={cx} cy="65" rx="7" ry="5" transform={`rotate(-20 ${cx} 65)`} />)}
                     {[17, 55, 93].map((x, i) => <line key={'s'+i} x1={x} y1="65" x2={x} y2="20" strokeWidth="2" />)}
                     <rect x="16" y="20" width="77" height="6" />
                 </svg>
             );
+            else svgContent = <span className="rhythm-symbol font-bold text-red-500">?</span>;
 
-            // Dotted Quarter & 8th
-            if (fuzzyMatch([1.5, 0.5])) return (
-                <svg key={key} viewBox="0 0 75 80" className="w-20 h-20 inline-block mx-1 fill-current stroke-current">
-                    <ellipse cx="15" cy="65" rx="7" ry="5" transform="rotate(-20 15 65)" />
-                    <circle cx="28" cy="60" r="3" />
-                    <ellipse cx="55" cy="65" rx="7" ry="5" transform="rotate(-20 55 65)" />
-                    <line x1="22" y1="65" x2="22" y2="20" strokeWidth="2" />
-                    <line x1="62" y1="65" x2="62" y2="20" strokeWidth="2" />
-                    <rect x="21" y="20" width="42" height="6" />
-                </svg>
+            return (
+                <div key={key} className="flex flex-col items-center mx-2 my-2">
+                    {svgContent}
+                    <div className={`mt-2 font-mono font-extrabold text-emerald-800 text-lg transition-opacity duration-300 tracking-wider whitespace-nowrap ${showCounts ? 'opacity-100' : 'opacity-0'}`}>
+                        {counts.join(' ')}
+                    </div>
+                </div>
             );
-
-            return <span key={key} className="rhythm-symbol font-bold text-red-500">?</span>;
         };
 
-        const generateMeasure = (difficultyLevel = 0, settings) => {
+        const generateMeasure = (difficultyLevel = 0, settings, meterBeats) => {
             const levelIndex = Math.min(9, difficultyLevel);
             const groups = [];
-            // Level 9+ gets a grueling 2 measures (8 beats)!
-            const totalBeats = levelIndex >= 8 ? 8.0 : 4.0; 
+            const totalBeats = levelIndex >= 8 ? meterBeats * 2 : meterBeats; 
             let remaining = totalBeats;
             
             while(remaining > 0) {
                 let availablePatterns = [];
                 
-                // Filter patterns allowed for this level that also fit in remaining beats
                 RHYTHM_DICT.forEach(r => {
                     if (settings[r.id][levelIndex]) {
                         const sum = r.beats.reduce((a, b) => a + b, 0);
@@ -226,10 +271,12 @@
                     }
                 });
 
-                // Failsafe in case user disabled everything or nothing fits the remaining space
                 if (availablePatterns.length === 0) {
-                    if (remaining >= 1.0) availablePatterns.push([1.0]); // Force a quarter note
-                    else availablePatterns.push([0.5, 0.5]); // Force 8th notes
+                    if (remaining >= 4.0) availablePatterns.push([4.0]);
+                    else if (remaining >= 2.0) availablePatterns.push([2.0]);
+                    else if (remaining >= 1.0) availablePatterns.push([1.0]);
+                    else if (remaining >= 0.5) availablePatterns.push([0.5, remaining - 0.5]);
+                    else availablePatterns.push([remaining]); 
                 }
 
                 const p = availablePatterns[Math.floor(Math.random() * availablePatterns.length)];
@@ -237,44 +284,37 @@
                 
                 const sum = p.reduce((a, b) => a + b, 0);
                 remaining -= sum;
-                remaining = Math.round(remaining * 100) / 100; // Fix JS floating point drift
+                remaining = Math.round(remaining * 100) / 100;
             }
             return groups;
         };
 
         const App = () => {
-            const [appView, setAppView] = React.useState('title'); // title, setup, game
+            const [appView, setAppView] = React.useState('title');
             
-            // Setup & Settings State
             const [teams, setTeams] = React.useState(DEFAULT_TEAMS);
             const [newTeamName, setNewTeamName] = React.useState('');
-            const [setupTab, setSetupTab] = React.useState('teams'); // teams, difficulty
+            const [setupTab, setSetupTab] = React.useState('teams'); // teams, rules, difficulty
             const [rhythmSettings, setRhythmSettings] = React.useState(getSavedSettings());
+            const [rules, setRules] = React.useState(getSavedRules());
             
-            // Game State
-            const [positions, setPositions] = React.useState({});
-            const [fails, setFails] = React.useState({});
+            const [stats, setStats] = React.useState({});
             const [currentTeamIndex, setCurrentTeamIndex] = React.useState(0);
             const [stealingTeamIndex, setStealingTeamIndex] = React.useState(null);
             const [turnQueue, setTurnQueue] = React.useState([]);
-            const [story, setStory] = React.useState("Welcome to Rhythm Quest! The magical Melody Chest awaits the first section to cross the musical realm.");
+            const [story, setStory] = React.useState("Welcome to Rhythm Quest! The ultimate test of rhythm awaits.");
             const [currentRhythm, setCurrentRhythm] = React.useState([]);
             const [replaysLeft, setReplaysLeft] = React.useState(2);
-            // gamePhases: start, playing, steal_selection, judging_steal, gameover
+            const [showCounts, setShowCounts] = React.useState(false);
             const [gamePhase, setGamePhase] = React.useState('start'); 
             const [winner, setWinner] = React.useState(null);
             const [audioCtx, setAudioCtx] = React.useState(null);
             const victoryAudio = React.useRef(new Audio('we-are-the-champions-copia.mp3'));
 
-            const generateStoryText = (phase, team, targetTeam = null) => {
-                if (phase === 'start') return `The quest begins! It is the ${team.name} section's turn. Listen and count the rhythm to pass!`;
-                if (phase === 'pass') return `Glorious! The ${team.name} advanced! Now the ${targetTeam.name} must step up.`;
-                if (phase === 'fail') return `Oh no! The ${team.name} stumbled on their rhythm!`;
-                if (phase === 'steal_pass') return `What a steal! The ${team.name} snatched a point! Now it's the ${targetTeam.name}'s regular turn.`;
-                if (phase === 'steal_fail') return `Disaster! The ${team.name} failed their steal, losing a step and taking double damage! Now it's the ${targetTeam.name}'s regular turn.`;
-                if (phase === 'gameover_win') return `Incredible! The ${team.name} have reached the Melody Chest! They are the supreme champions of Rhythm Quest!`;
-                if (phase === 'gameover_tpk') return `A tragedy! Every single section has failed too many times. The Melody Chest remains sealed forever!`;
-                return "The journey continues...";
+            const updateRules = (updates) => {
+                const newRules = { ...rules, ...updates };
+                setRules(newRules);
+                localStorage.setItem('rq_rules', JSON.stringify(newRules));
             };
 
             const saveSettings = (newSettings) => {
@@ -340,17 +380,14 @@
                 const beatDuration = 60 / bpm;
                 let startTime = ctx.currentTime + 0.2;
 
-                // Count in
                 for (let i = 0; i < 4; i++) {
                     playNote(ctx, startTime + i * beatDuration, 0, true);
                 }
 
                 startTime += 4 * beatDuration;
-
-                // Play rhythm
                 let currentOffset = 0;
-                const flatRhythm = currentRhythm.flat();
-                flatRhythm.forEach(noteDuration => {
+                
+                currentRhythm.flat().forEach(noteDuration => {
                     const durationInSeconds = noteDuration * beatDuration;
                     const articulationGap = Math.min(0.05, durationInSeconds * 0.1); 
                     const playDuration = durationInSeconds - articulationGap;
@@ -359,9 +396,7 @@
                     currentOffset += noteDuration;
                 });
 
-                if (gamePhase === 'playing') {
-                    setReplaysLeft(prev => prev - 1);
-                }
+                if (gamePhase === 'playing') setReplaysLeft(prev => prev - 1);
             };
 
             const handleAddTeam = () => {
@@ -380,8 +415,8 @@
                 setTeams(teams.filter(t => t.id !== id));
             };
 
-            const getNextAliveTeam = (currentFails, currentQueue) => {
-                const activeIndices = teams.map((_, i) => i).filter(i => currentFails[teams[i].id] < MAX_FAILS);
+            const getNextAliveTeam = (currentStats, currentQueue) => {
+                const activeIndices = teams.map((_, i) => i).filter(i => rules.gauntlet || currentStats[teams[i].id].fails < MAX_FAILS);
                 if (activeIndices.length === 0) return null;
 
                 let nextQueue = currentQueue.filter(i => activeIndices.includes(i));
@@ -394,9 +429,11 @@
             const triggerVictory = (winningTeam) => {
                 setWinner(winningTeam);
                 setGamePhase('gameover');
-                setStory(generateStoryText('gameover_win', winningTeam));
+                setStory(`Incredible! The ${winningTeam.name} have reached the Melody Chest! They are the supreme champions of Rhythm Quest!`);
                 victoryAudio.current.play().catch(e => console.log("Audio play prevented:", e));
             };
+
+            const getMeterBeats = () => METERS.find(m => m.id === rules.meter)?.b || 4.0;
 
             const startGame = () => {
                 initAudio();
@@ -404,115 +441,131 @@
                 setCurrentTeamIndex(initialQueue[0]);
                 setTurnQueue(initialQueue.slice(1));
                 
-                const initPos = {};
-                const initFails = {};
-                teams.forEach(t => { initPos[t.id] = 0; initFails[t.id] = 0; });
-                setPositions(initPos);
-                setFails(initFails);
+                const initStats = {};
+                teams.forEach(t => { initStats[t.id] = { pos: 0, fails: 0, reveals: 1 }; });
+                setStats(initStats);
                 
-                const initialRhythm = generateMeasure(0, rhythmSettings);
+                const initialRhythm = generateMeasure(0, rhythmSettings, getMeterBeats());
                 setCurrentRhythm(initialRhythm);
                 setReplaysLeft(2);
+                setShowCounts(false);
                 setGamePhase('playing');
-                setStory(generateStoryText('start', teams[initialQueue[0]]));
+                setStory(`The quest begins! It is the ${teams[initialQueue[0]].name} section's turn. Read and count the rhythm to pass!`);
             };
 
-            const handleTurnAdvance = (newPositions, newFails, lastActionStory) => {
-                const nextTarget = getNextAliveTeam(newFails, turnQueue);
+            const handleTurnAdvance = (newStats, lastActionStory) => {
+                const nextTarget = getNextAliveTeam(newStats, turnQueue);
                 
                 if (!nextTarget) {
-                    setGamePhase('gameover');
-                    setWinner(null);
-                    setStory(generateStoryText('gameover_tpk'));
+                    setGamePhase('gameover'); setWinner(null);
+                    setStory(`A tragedy! Every single section has failed too many times. The Melody Chest remains sealed forever!`);
                     return;
                 }
 
+                setStats(newStats);
                 setTurnQueue(nextTarget.newQueue);
                 setCurrentTeamIndex(nextTarget.teamIdx);
                 
-                const nextDifficulty = newPositions[teams[nextTarget.teamIdx].id];
-                const nextRhythm = generateMeasure(nextDifficulty, rhythmSettings);
+                const nextDifficulty = newStats[teams[nextTarget.teamIdx].id].pos;
+                const nextRhythm = generateMeasure(nextDifficulty, rhythmSettings, getMeterBeats());
                 setCurrentRhythm(nextRhythm);
                 setReplaysLeft(2);
+                setShowCounts(false);
                 setGamePhase('playing');
                 setStory(lastActionStory);
             };
 
+            const handleRevealCounts = () => {
+                const activeId = gamePhase === 'playing' ? teams[currentTeamIndex].id : teams[stealingTeamIndex].id;
+                let newStats = JSON.parse(JSON.stringify(stats));
+                if (newStats[activeId].reveals > 0) {
+                    newStats[activeId].reveals -= 1;
+                    setStats(newStats);
+                    setShowCounts(true);
+                }
+            };
+
             const handleNormalResult = (passed) => {
                 const currentTeam = teams[currentTeamIndex];
-                let newPositions = { ...positions };
-                let newFails = { ...fails };
+                let newStats = JSON.parse(JSON.stringify(stats));
 
                 if (passed) {
-                    newPositions[currentTeam.id] += 1;
-                    setPositions(newPositions);
-                    if (newPositions[currentTeam.id] >= MAX_STEPS) {
+                    newStats[currentTeam.id].pos += 1;
+                    if (newStats[currentTeam.id].pos >= MAX_STEPS) {
+                        setStats(newStats);
                         triggerVictory(currentTeam);
                         return;
                     }
                     
-                    const nextTarget = getNextAliveTeam(newFails, turnQueue);
+                    const nextTarget = getNextAliveTeam(newStats, turnQueue);
                     if (nextTarget) {
-                        handleTurnAdvance(newPositions, newFails, generateStoryText('pass', currentTeam, teams[nextTarget.teamIdx]));
+                        handleTurnAdvance(newStats, `Glorious! The ${currentTeam.name} advanced! Now the ${teams[nextTarget.teamIdx].name} must step up.`);
                     } else {
-                        setGamePhase('gameover'); setWinner(null); setStory(generateStoryText('gameover_tpk'));
+                        setStats(newStats); setGamePhase('gameover'); setWinner(null); setStory(`Game Over! TPK.`);
                     }
                 } else {
-                    newFails[currentTeam.id] += 1;
-                    setFails(newFails);
+                    if (rules.gauntlet) {
+                        newStats[currentTeam.id].pos = Math.max(0, newStats[currentTeam.id].pos - 1);
+                    } else {
+                        newStats[currentTeam.id].fails += 1;
+                    }
+                    setStats(newStats);
                     
-                    const nextTarget = getNextAliveTeam(newFails, turnQueue);
+                    const nextTarget = getNextAliveTeam(newStats, turnQueue);
                     if (!nextTarget) {
-                        setGamePhase('gameover');
-                        setWinner(null);
-                        setStory(generateStoryText('gameover_tpk'));
+                        setGamePhase('gameover'); setWinner(null); setStory(`A tragedy! Every single section has failed too many times.`);
                         return;
                     }
 
-                    // Go to FREE FOR ALL steal phase
+                    // FREE FOR ALL steal phase
                     setGamePhase('steal_selection');
                 }
             };
 
             const handleStealResult = (stealSuccess) => {
                 const stealingTeam = teams[stealingTeamIndex];
-                let newPositions = { ...positions };
-                let newFails = { ...fails };
+                let newStats = JSON.parse(JSON.stringify(stats));
 
                 if (stealSuccess) {
-                    newPositions[stealingTeam.id] += 1;
-                    setPositions(newPositions);
+                    newStats[stealingTeam.id].pos += 1;
+                    newStats[stealingTeam.id].reveals += 1; // Gain a reveal on steal!
                     
-                    if (newPositions[stealingTeam.id] >= MAX_STEPS) {
+                    if (newStats[stealingTeam.id].pos >= MAX_STEPS) {
+                        setStats(newStats);
                         triggerVictory(stealingTeam);
                         return;
                     }
                     
-                    const nextTarget = getNextAliveTeam(newFails, turnQueue);
-                    handleTurnAdvance(newPositions, newFails, generateStoryText('steal_pass', stealingTeam, teams[nextTarget.teamIdx]));
+                    const nextTarget = getNextAliveTeam(newStats, turnQueue);
+                    handleTurnAdvance(newStats, `What a steal! The ${stealingTeam.name} snatched a point and gained a Reveal! Now it's the ${teams[nextTarget.teamIdx].name}'s regular turn.`);
                 } else {
-                    // Steal failed! -1 position (min 0), +2 fails!
-                    newPositions[stealingTeam.id] = Math.max(0, newPositions[stealingTeam.id] - 1);
-                    newFails[stealingTeam.id] += 2;
-                    setPositions(newPositions);
-                    setFails(newFails);
+                    if (rules.gauntlet) {
+                        newStats[stealingTeam.id].pos = Math.max(0, newStats[stealingTeam.id].pos - 2); // Double penalty
+                    } else {
+                        newStats[stealingTeam.id].pos = Math.max(0, newStats[stealingTeam.id].pos - 1);
+                        newStats[stealingTeam.id].fails += 2;
+                    }
 
-                    const nextTarget = getNextAliveTeam(newFails, turnQueue);
+                    const nextTarget = getNextAliveTeam(newStats, turnQueue);
                     if (!nextTarget) {
-                        setGamePhase('gameover'); setWinner(null); setStory(generateStoryText('gameover_tpk'));
+                        setStats(newStats); setGamePhase('gameover'); setWinner(null); setStory(`Game Over.`);
                         return;
                     }
-                    handleTurnAdvance(newPositions, newFails, generateStoryText('steal_fail', stealingTeam, teams[nextTarget.teamIdx]));
+                    handleTurnAdvance(newStats, `Disaster! The ${stealingTeam.name} failed their steal, losing position and taking severe damage! Now it's the ${teams[nextTarget.teamIdx].name}'s regular turn.`);
                 }
             };
 
             const renderTrack = () => {
                 return (
                     <div className="bg-white p-6 rounded-2xl shadow-lg mb-6 border-4 border-emerald-900">
-                        <h2 className="text-2xl font-bold text-center text-emerald-900 mb-6 uppercase tracking-widest">Quest Progress</h2>
+                        <div className="flex justify-between items-center mb-6">
+                            <h2 className="text-2xl font-bold text-emerald-900 uppercase tracking-widest">Quest Progress</h2>
+                            {rules.gauntlet && <span className="bg-red-600 text-white px-3 py-1 rounded-full font-bold text-sm uppercase"><i className="fa-solid fa-fire mr-2"></i>Gauntlet Active</span>}
+                        </div>
                         <div className="space-y-4">
                             {teams.map((team, idx) => {
-                                const isEliminated = fails[team.id] >= MAX_FAILS;
+                                const teamStat = stats[team.id] || { pos: 0, fails: 0, reveals: 1 };
+                                const isEliminated = !rules.gauntlet && teamStat.fails >= MAX_FAILS;
                                 const isCurrentTurn = currentTeamIndex === idx && gamePhase === 'playing' && !isEliminated;
                                 const isStealingTurn = stealingTeamIndex === idx && gamePhase === 'judging_steal' && !isEliminated;
                                 
@@ -524,13 +577,15 @@
                                                 {isCurrentTurn && <i className="fa-solid fa-caret-right mr-2 text-emerald-500 animate-pulse"></i>}
                                                 {isStealingTurn && <i className="fa-solid fa-mask mr-2 text-amber-500 animate-bounce"></i>}
                                                 {team.name}
-                                                <span className="ml-2 text-xs bg-gray-200 px-2 py-1 rounded-md">Lvl {Math.min(9, (positions[team.id] || 0) + 1)}</span>
+                                                <span className="ml-2 text-xs bg-gray-200 px-2 py-1 rounded-md">Lvl {Math.min(9, teamStat.pos + 1)}</span>
                                             </div>
-                                            <div className="flex text-red-500 text-xs mt-1">
-                                                {[...Array(MAX_FAILS)].map((_, i) => (
-                                                    <i key={i} className={`fa-solid fa-xmark mr-1 ${i < fails[team.id] ? 'opacity-100' : 'opacity-20 text-gray-400'}`}></i>
-                                                ))}
-                                            </div>
+                                            {!rules.gauntlet && (
+                                                <div className="flex text-red-500 text-xs mt-1">
+                                                    {[...Array(MAX_FAILS)].map((_, i) => (
+                                                        <i key={i} className={`fa-solid fa-xmark mr-1 ${i < teamStat.fails ? 'opacity-100' : 'opacity-20 text-gray-400'}`}></i>
+                                                    ))}
+                                                </div>
+                                            )}
                                             {isEliminated && <div className="text-red-700 text-xs font-black uppercase mt-1">Eliminated!</div>}
                                         </div>
                                         <div className="flex-1 h-12 bg-gray-200 rounded-full relative track-bg border-2 border-gray-300 overflow-hidden ml-2">
@@ -540,7 +595,7 @@
                                             
                                             <div 
                                                 className={`absolute top-0 bottom-0 transition-all duration-700 ease-in-out flex items-center justify-center z-20`}
-                                                style={{ left: `${((positions[team.id] || 0) / MAX_STEPS) * 92}%`, width: '8%' }}
+                                                style={{ left: `${(teamStat.pos / MAX_STEPS) * 92}%`, width: '8%' }}
                                             >
                                                 <div className={`w-10 h-10 ${team.color} ${team.border} border-2 rounded-full flex items-center justify-center shadow-md ${isCurrentTurn ? 'transform scale-125 ring-4 ring-emerald-300' : isStealingTurn ? 'transform scale-125 ring-4 ring-amber-400' : ''}`}>
                                                     <i className={`fa-solid ${team.icon} text-white`}></i>
@@ -568,13 +623,13 @@
                             </h1>
                             <div className="text-gray-500 font-bold tracking-widest uppercase mb-6 text-xl flex items-center justify-center gap-3">
                                 <span className="h-px w-8 bg-gray-300"></span>
-                                Version 3.0
+                                Version 4.0
                                 <span className="h-px w-8 bg-gray-300"></span>
                             </div>
                             
                             <div className="mb-8 text-center bg-blue-50 p-6 rounded-xl border border-blue-200">
-                                <p className="text-blue-800 font-bold mb-2 text-lg"><i className="fa-solid fa-bolt mr-2"></i> Offline Mode Active</p>
-                                <p className="text-blue-700 text-sm">The game now runs fully locally for perfect, instantaneous rhythm generation! The AI DM has retired.</p>
+                                <p className="text-blue-800 font-bold mb-2 text-lg"><i className="fa-solid fa-bolt mr-2"></i> Offline Engine Active</p>
+                                <p className="text-blue-700 text-sm">Flawless, instantaneous rhythm generation built-in. iOS SVG fixes deployed. Steal Mechanics fully armed.</p>
                             </div>
 
                             <div className="flex flex-col gap-4">
@@ -599,9 +654,12 @@
                             </button>
                             <h2 className="text-4xl font-black text-center text-emerald-800 mb-6 mt-2"><i className="fa-solid fa-wrench mr-4"></i>Game Setup</h2>
                             
-                            <div className="flex justify-center mb-6 border-b-2 border-emerald-100 pb-4">
+                            <div className="flex justify-center mb-6 border-b-2 border-emerald-100 pb-4 overflow-x-auto whitespace-nowrap">
                                 <button onClick={() => setSetupTab('teams')} className={`px-6 py-2 mx-2 font-bold rounded-full transition-colors ${setupTab === 'teams' ? 'bg-emerald-600 text-white shadow-md' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}>
                                     <i className="fa-solid fa-users mr-2"></i> Roster
+                                </button>
+                                <button onClick={() => setSetupTab('rules')} className={`px-6 py-2 mx-2 font-bold rounded-full transition-colors ${setupTab === 'rules' ? 'bg-emerald-600 text-white shadow-md' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}>
+                                    <i className="fa-solid fa-scale-balanced mr-2"></i> Rules & Settings
                                 </button>
                                 <button onClick={() => setSetupTab('difficulty')} className={`px-6 py-2 mx-2 font-bold rounded-full transition-colors ${setupTab === 'difficulty' ? 'bg-emerald-600 text-white shadow-md' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}>
                                     <i className="fa-solid fa-sliders mr-2"></i> Difficulty Editor
@@ -629,10 +687,6 @@
                                         </button>
                                     </div>
 
-                                    <div className="mb-4 flex justify-between items-center px-2">
-                                        <span className="font-bold text-gray-600">Active Teams: {teams.length}/20</span>
-                                    </div>
-
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8 max-h-80 overflow-y-auto p-2">
                                         {teams.map((t, idx) => (
                                             <div key={t.id} className={`${t.color} text-white p-3 rounded-xl shadow flex justify-between items-center`}>
@@ -649,6 +703,42 @@
                                             <div className="col-span-full text-center text-gray-500 font-medium py-8 italic">No teams added yet. You need at least 2 teams to play.</div>
                                         )}
                                     </div>
+                                </div>
+                            )}
+
+                            {setupTab === 'rules' && (
+                                <div className="space-y-6 mb-8 max-h-96 overflow-y-auto p-2">
+                                    
+                                    <div className="bg-gray-50 p-6 rounded-xl border border-gray-200 shadow-sm">
+                                        <label className="block text-gray-800 font-bold mb-3 text-xl"><i className="fa-solid fa-music mr-3 text-emerald-600"></i>Time Signature</label>
+                                        <select 
+                                            value={rules.meter}
+                                            onChange={(e) => updateRules({ meter: e.target.value })}
+                                            className="w-full px-5 py-4 rounded-xl border-2 border-gray-300 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100 text-lg font-bold bg-white"
+                                        >
+                                            {METERS.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                                        </select>
+                                        <p className="text-sm text-gray-500 mt-2 font-medium">Controls the amount of beats per turn.</p>
+                                    </div>
+
+                                    <div className="bg-gray-50 p-6 rounded-xl border border-gray-200 shadow-sm">
+                                        <label className="block text-gray-800 font-bold mb-3 text-xl"><i className="fa-solid fa-comment-dots mr-3 text-emerald-600"></i>Counting System</label>
+                                        <div className="flex gap-4">
+                                            <button onClick={() => updateRules({ countingSys: 'eastman' })} className={`flex-1 py-4 rounded-xl font-bold text-lg border-2 transition-colors ${rules.countingSys === 'eastman' ? 'bg-emerald-100 border-emerald-500 text-emerald-800' : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'}`}>Eastman (1 ti te ta)</button>
+                                            <button onClick={() => updateRules({ countingSys: 'traditional' })} className={`flex-1 py-4 rounded-xl font-bold text-lg border-2 transition-colors ${rules.countingSys === 'traditional' ? 'bg-emerald-100 border-emerald-500 text-emerald-800' : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'}`}>Traditional (1 e & a)</button>
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-red-50 p-6 rounded-xl border border-red-200 shadow-sm">
+                                        <label className="block text-red-800 font-bold mb-3 text-xl"><i className="fa-solid fa-fire mr-3"></i>Gauntlet Mode</label>
+                                        <div className="flex items-center justify-between">
+                                            <p className="text-red-700 font-medium max-w-lg">Removes elimination (Red X's). Teams instead lose Position (-1 for fail, -2 for failed steals).</p>
+                                            <button onClick={() => updateRules({ gauntlet: !rules.gauntlet })} className={`relative w-20 h-10 rounded-full transition-colors ${rules.gauntlet ? 'bg-red-600' : 'bg-gray-300'}`}>
+                                                <div className={`absolute top-1 bg-white w-8 h-8 rounded-full shadow transition-all ${rules.gauntlet ? 'left-11' : 'left-1'}`}></div>
+                                            </button>
+                                        </div>
+                                    </div>
+
                                 </div>
                             )}
 
@@ -728,7 +818,7 @@
                                     {gamePhase.includes('steal') ? (
                                         <>Steal Opportunity!</>
                                     ) : (
-                                        <>Current Turn: {teams[currentTeamIndex].name} (Lvl {Math.min(9, (positions[teams[currentTeamIndex].id] || 0) + 1)})</>
+                                        <>Current Turn: {teams[currentTeamIndex].name} (Lvl {Math.min(9, (stats[teams[currentTeamIndex].id]?.pos || 0) + 1)})</>
                                     )}
                                 </div>
                             )}
@@ -767,10 +857,30 @@
                             {(gamePhase === 'playing' || gamePhase === 'steal_selection' || gamePhase === 'judging_steal') && (
                                 <div className="w-full max-w-4xl bg-gray-50 p-6 rounded-xl border-2 border-dashed border-gray-300">
                                     
-                                    <div className="my-4 bg-white p-6 rounded-xl border border-gray-300 shadow-md">
-                                        <div className="text-emerald-700 font-black mb-4 uppercase tracking-widest text-lg">Current Rhythm (4/4 Time)</div>
-                                        <div className="flex flex-wrap justify-center items-end min-h-[6rem] gap-y-8 text-gray-900">
-                                            {currentRhythm.map((group, i) => renderRhythmGroup(group, i))}
+                                    <div className="my-4 bg-white p-6 rounded-xl border border-gray-300 shadow-md overflow-x-auto">
+                                        <div className="text-emerald-700 font-black mb-4 uppercase tracking-widest text-lg flex justify-between items-center">
+                                            <span>Current Rhythm ({rules.meter} Time)</span>
+                                            {gamePhase !== 'steal_selection' && (
+                                                <button 
+                                                    onClick={handleRevealCounts}
+                                                    disabled={showCounts || stats[gamePhase === 'playing' ? teams[currentTeamIndex].id : teams[stealingTeamIndex].id]?.reveals <= 0}
+                                                    className={`px-4 py-2 text-sm rounded-lg shadow font-bold transition-colors ${showCounts || stats[gamePhase === 'playing' ? teams[currentTeamIndex].id : teams[stealingTeamIndex].id]?.reveals <= 0 ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200'}`}
+                                                >
+                                                    <i className="fa-solid fa-eye mr-2"></i> 
+                                                    Reveal Counts ({stats[gamePhase === 'playing' ? teams[currentTeamIndex].id : teams[stealingTeamIndex].id]?.reveals} Left)
+                                                </button>
+                                            )}
+                                        </div>
+                                        
+                                        <div className="flex flex-wrap justify-center items-end min-h-[8rem] gap-y-8 text-gray-900 py-4">
+                                            {(() => {
+                                                let currentBeatPos = 0;
+                                                return currentRhythm.map((group, i) => {
+                                                    const el = renderRhythmGroup(group, i, currentBeatPos, showCounts, rules.countingSys);
+                                                    currentBeatPos += group.reduce((a, b) => a + b, 0);
+                                                    return el;
+                                                });
+                                            })()}
                                         </div>
                                     </div>
 
@@ -806,7 +916,7 @@
                                             <div className="flex flex-wrap gap-4 justify-center">
                                                 {teams.map((t, idx) => {
                                                     // Don't let the team who failed steal their own miss, and don't show eliminated teams
-                                                    if (idx === currentTeamIndex || fails[t.id] >= MAX_FAILS) return null;
+                                                    if (idx === currentTeamIndex || (!rules.gauntlet && stats[t.id]?.fails >= MAX_FAILS)) return null;
                                                     return (
                                                         <button 
                                                             key={t.id} 
@@ -820,8 +930,8 @@
                                             </div>
                                             <div className="mt-8 flex justify-center">
                                                 <button onClick={() => {
-                                                    const nextTarget = getNextAliveTeam(fails, turnQueue);
-                                                    handleTurnAdvance(positions, fails, `Nobody stole the point! Now it's the ${teams[nextTarget.teamIdx].name}'s regular turn.`);
+                                                    const nextTarget = getNextAliveTeam(stats, turnQueue);
+                                                    handleTurnAdvance(stats, `Nobody stole the point! Now it's the ${teams[nextTarget.teamIdx].name}'s regular turn.`);
                                                 }} className="px-8 py-3 bg-gray-500 hover:bg-gray-600 text-white font-bold rounded-xl shadow transition-colors text-lg">
                                                     No one (Skip Steal)
                                                 </button>
