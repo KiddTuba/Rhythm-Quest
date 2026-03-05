@@ -24,21 +24,21 @@
 
     <script type="text/babel">
         const PALETTE = [
-            { c: 'bg-blue-500', b: 'border-blue-700', i: 'fa-wind' },
-            { c: 'bg-teal-500', b: 'border-teal-700', i: 'fa-water' },
-            { c: 'bg-yellow-400', b: 'border-yellow-600', i: 'fa-fire' },
-            { c: 'bg-orange-500', b: 'border-orange-700', i: 'fa-bolt' },
-            { c: 'bg-red-500', b: 'border-red-700', i: 'fa-mountain' },
-            { c: 'bg-purple-500', b: 'border-purple-700', i: 'fa-drum' },
-            { c: 'bg-pink-500', b: 'border-pink-700', i: 'fa-heart' },
-            { c: 'bg-indigo-500', b: 'border-indigo-700', i: 'fa-star' },
-            { c: 'bg-cyan-500', b: 'border-cyan-700', i: 'fa-moon' },
-            { c: 'bg-rose-500', b: 'border-rose-700', i: 'fa-leaf' }
+            { c: 'bg-red-500', b: 'border-red-700', i: 'fa-fire' },         // C (Red)
+            { c: 'bg-orange-500', b: 'border-orange-700', i: 'fa-bolt' },   // D (Orange)
+            { c: 'bg-yellow-400', b: 'border-yellow-600', i: 'fa-sun' },    // E (Yellow)
+            { c: 'bg-green-500', b: 'border-green-700', i: 'fa-leaf' },     // F (Green)
+            { c: 'bg-teal-500', b: 'border-teal-700', i: 'fa-water' },      // F# / Gb (Teal)
+            { c: 'bg-blue-500', b: 'border-blue-700', i: 'fa-wind' },       // G (Blue)
+            { c: 'bg-indigo-500', b: 'border-indigo-700', i: 'fa-star' },   // A (Indigo)
+            { c: 'bg-purple-500', b: 'border-purple-700', i: 'fa-moon' },   // B (Purple)
+            { c: 'bg-pink-500', b: 'border-pink-700', i: 'fa-heart' },      // Extra/High C
+            { c: 'bg-gray-600', b: 'border-gray-800', i: 'fa-drum' }        // Percussion/Neutral
         ];
 
         const DEFAULT_TEAMS = [
-            { id: 't1', name: 'Flutes', color: PALETTE[0].c, border: PALETTE[0].b, icon: PALETTE[0].i },
-            { id: 't2', name: 'Trumpets', color: PALETTE[3].c, border: PALETTE[3].b, icon: PALETTE[3].i },
+            { id: 't1', name: 'Flutes', color: PALETTE[5].c, border: PALETTE[5].b, icon: PALETTE[5].i },
+            { id: 't2', name: 'Trumpets', color: PALETTE[1].c, border: PALETTE[1].b, icon: PALETTE[1].i },
         ];
 
         const MAX_STEPS = 10;
@@ -77,13 +77,23 @@
         const DEFAULT_RULES = { countingSys: 'eastman', gauntlet: false };
 
         const getSavedSettings = () => {
-            try { return JSON.parse(localStorage.getItem('rq_settings')) || DEFAULT_RHYTHM_SETTINGS; } 
-            catch { return DEFAULT_RHYTHM_SETTINGS; }
+            try { 
+                const saved = JSON.parse(localStorage.getItem('rq_settings')); 
+                if (!saved) return DEFAULT_RHYTHM_SETTINGS;
+                // Merge with defaults to ensure new features don't crash old browser caches!
+                const merged = { ...DEFAULT_RHYTHM_SETTINGS };
+                for (const key in merged) {
+                    if (saved[key]) merged[key] = saved[key];
+                }
+                return merged;
+            } catch { return DEFAULT_RHYTHM_SETTINGS; }
         };
 
         const getSavedRules = () => {
-            try { return JSON.parse(localStorage.getItem('rq_rules')) || DEFAULT_RULES; } 
-            catch { return DEFAULT_RULES; }
+            try { 
+                const saved = JSON.parse(localStorage.getItem('rq_rules')); 
+                return saved ? { ...DEFAULT_RULES, ...saved } : DEFAULT_RULES;
+            } catch { return DEFAULT_RULES; }
         };
 
         const getShuffledTeams = (teamsArray) => {
@@ -118,7 +128,7 @@
                 else if (Math.abs(fraction - 5/6) < 0.01) syl = sys === 'eastman' ? 'la' : 'let'; // 16th triplet upbeat
                 else syl = '+';
 
-                // Formatting dashed durations
+                // Formatting dashed durations specifically requested
                 if (Math.abs(fraction - 0) < 0.01) {
                     if (Math.abs(duration - 4.0) < 0.01) return `${beatNum} - - -`;
                     if (Math.abs(duration - 3.0) < 0.01) return `${beatNum} - -`;
@@ -348,6 +358,7 @@
             
             const [teams, setTeams] = React.useState(DEFAULT_TEAMS);
             const [newTeamName, setNewTeamName] = React.useState('');
+            const [newTeamColor, setNewTeamColor] = React.useState(PALETTE[0]);
             const [setupTab, setSetupTab] = React.useState('teams'); 
             const [rhythmSettings, setRhythmSettings] = React.useState(getSavedSettings());
             const [rules, setRules] = React.useState(getSavedRules());
@@ -490,11 +501,10 @@
 
             const handleAddTeam = () => {
                 if (newTeamName.trim() && teams.length < 20) {
-                    const p = PALETTE[teams.length % PALETTE.length];
                     setTeams([...teams, {
                         id: 'team_' + Date.now(),
                         name: newTeamName.trim(),
-                        color: p.c, border: p.b, icon: p.i
+                        color: newTeamColor.c, border: newTeamColor.b, icon: newTeamColor.i
                     }]);
                     setNewTeamName('');
                 }
@@ -714,13 +724,13 @@
                             </h1>
                             <div className="text-gray-500 font-bold tracking-widest uppercase mb-6 text-xl flex items-center justify-center gap-3">
                                 <span className="h-px w-8 bg-gray-300"></span>
-                                Version 8.0
+                                Version 9.0
                                 <span className="h-px w-8 bg-gray-300"></span>
                             </div>
                             
                             <div className="mb-8 text-center bg-blue-50 p-6 rounded-xl border border-blue-200">
                                 <p className="text-blue-800 font-bold mb-2 text-lg"><i className="fa-solid fa-bolt mr-2"></i> Offline Engine Active</p>
-                                <p className="text-blue-700 text-sm">Flawless 4/4 rhythm generation built-in. Timer, Barlines, and visual fixes deployed. Steal Mechanics fully armed.</p>
+                                <p className="text-blue-700 text-sm">Flawless 4/4 rhythm generation built-in. Timer, Barlines, GitHub fixes, and Boomwhacker Colors deployed.</p>
                             </div>
 
                             <div className="flex flex-col gap-4">
@@ -759,23 +769,40 @@
 
                             {setupTab === 'teams' && (
                                 <div>
-                                    <div className="bg-gray-50 p-6 rounded-xl border border-gray-200 mb-6 flex flex-col md:flex-row gap-4 items-center">
-                                        <input 
-                                            type="text" 
-                                            value={newTeamName} 
-                                            onChange={(e) => setNewTeamName(e.target.value)}
-                                            onKeyDown={(e) => e.key === 'Enter' && handleAddTeam()}
-                                            className="flex-1 px-5 py-4 rounded-xl border-2 border-gray-300 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100 focus:outline-none text-lg"
-                                            placeholder="Enter Team Name (e.g., Alto Saxes)"
-                                            maxLength={25}
-                                        />
-                                        <button 
-                                            onClick={handleAddTeam}
-                                            disabled={!newTeamName.trim() || teams.length >= 20}
-                                            className={`px-8 py-4 rounded-xl font-bold text-lg text-white shadow transition-transform ${(!newTeamName.trim() || teams.length >= 20) ? 'bg-gray-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700 hover:scale-105'}`}
-                                        >
-                                            <i className="fa-solid fa-plus mr-2"></i> Add Team
-                                        </button>
+                                    <div className="bg-gray-50 p-6 rounded-xl border border-gray-200 mb-6">
+                                        <label className="block text-gray-700 font-bold mb-3"><i className="fa-solid fa-palette mr-2 text-emerald-600"></i>1. Select Team Color (Boomwhacker Sync!)</label>
+                                        <div className="flex flex-wrap gap-3 mb-6 justify-start">
+                                            {PALETTE.map((p, idx) => (
+                                                <button 
+                                                    key={idx} 
+                                                    onClick={() => setNewTeamColor(p)}
+                                                    className={`w-12 h-12 rounded-full shadow-md ${p.c} border-4 transition-all ${newTeamColor.c === p.c ? 'border-gray-800 scale-125 ring-4 ring-gray-300 z-10' : 'border-transparent hover:scale-110'}`}
+                                                    title="Select Color"
+                                                >
+                                                    <i className={`fa-solid ${p.i} text-white opacity-75`}></i>
+                                                </button>
+                                            ))}
+                                        </div>
+
+                                        <label className="block text-gray-700 font-bold mb-3"><i className="fa-solid fa-pen mr-2 text-emerald-600"></i>2. Enter Team Name</label>
+                                        <div className="flex flex-col md:flex-row gap-4 items-center">
+                                            <input 
+                                                type="text" 
+                                                value={newTeamName} 
+                                                onChange={(e) => setNewTeamName(e.target.value)}
+                                                onKeyDown={(e) => e.key === 'Enter' && handleAddTeam()}
+                                                className="flex-1 px-5 py-4 rounded-xl border-2 border-gray-300 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100 focus:outline-none text-lg"
+                                                placeholder="Enter Team Name (e.g., Alto Saxes)"
+                                                maxLength={25}
+                                            />
+                                            <button 
+                                                onClick={handleAddTeam}
+                                                disabled={!newTeamName.trim() || teams.length >= 20}
+                                                className={`px-8 py-4 rounded-xl font-bold text-lg text-white shadow transition-transform ${(!newTeamName.trim() || teams.length >= 20) ? 'bg-gray-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700 hover:scale-105'}`}
+                                            >
+                                                <i className="fa-solid fa-plus mr-2"></i> Add Team
+                                            </button>
+                                        </div>
                                     </div>
 
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8 max-h-80 overflow-y-auto p-2">
